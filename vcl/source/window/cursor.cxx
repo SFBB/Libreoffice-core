@@ -25,7 +25,7 @@
 #include <vcl/settings.hxx>
 #include <vcl/window.hxx>
 #include <vcl/cursor.hxx>
-
+#include <iostream>
 #include <window.h>
 
 #include <tools/poly.hxx>
@@ -197,6 +197,7 @@ void vcl::Cursor::ImplRestore()
 
 void vcl::Cursor::ImplDoShow( bool bDrawDirect, bool bRestore )
 {
+    std::cout << "ImplDoShow!" << std::endl;
     if ( !mbVisible )
         return;
 
@@ -344,6 +345,7 @@ void vcl::Cursor::ImplNew()
 
 IMPL_LINK_NOARG(vcl::Cursor, ImplTimerHdl, Timer *, void)
 {
+    std::cout << "We are in timer!" << std::endl;
     if ( mpData->mbCurVisible )
         ImplRestore();
     else
@@ -389,6 +391,7 @@ void vcl::Cursor::SetStyle( sal_uInt16 nStyle )
 
 void vcl::Cursor::Show()
 {
+    std::cout << "show!" << std::endl;
     if ( !mbVisible )
     {
         mbVisible = true;
@@ -416,6 +419,7 @@ void vcl::Cursor::SetWindow( vcl::Window* pWindow )
 
 void vcl::Cursor::SetPos( const Point& rPoint )
 {
+    std::cout << rPoint.getX() << ", " << rPoint.getY() << std::endl;
     if ( maPos != rPoint )
     {
         maPos = rPoint;
